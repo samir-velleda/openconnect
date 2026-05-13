@@ -1,0 +1,44 @@
+[Unit]
+Description=OpenConnect Gateway v10.0.6 - Image Processing Gateway
+Documentation=https://github.com/openconnect/openconnect-gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openconnect
+Group=openconnect
+WorkingDirectory=/opt/openconnect-gateway
+Environment="OPENCONNECT_CONFIG=/etc/openconnect-gateway/config.yaml"
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+
+ExecStart=/opt/openconnect-gateway/venv/bin/python3 /opt/openconnect-gateway/openconnect-gateway.py
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Reinício automático
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=3600
+StartLimitBurst=10
+
+# Recursos
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openconnect-gateway
+
+# Segurança
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/openconnect-gateway /etc/openconnect-gateway
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,92 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║           🚀 OPENCONNECT GATEWAY v4.0 - INSTRUÇÕES DE DEPLOY                 ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📁 Repositório local: /mnt/agents/output/openconnect-gateway-v4/
+📊 20 arquivos | Pronto para GitHub
+
+═══════════════════════════════════════════════════════════════════════════════
+🔗 SEUS LINKS REAIS
+═══════════════════════════════════════════════════════════════════════════════
+
+Repositório GitHub:  https://github.com/samir-velleda/openconnect
+Raw (instalador):    https://raw.githubusercontent.com/samir-velleda/openconnect/main/install.sh
+One-liner instalação: curl -fsSL https://raw.githubusercontent.com/samir-velleda/openconnect/main/install.sh | bash
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 PASSO A PASSO PARA SUBIR NO GITHUB
+═══════════════════════════════════════════════════════════════════════════════
+
+1️⃣  CLIQUE "Create repository" no GitHub (já configurado na screenshot)
+    → Owner: samir-velleda
+    → Repository name: openconnect
+    → Visibility: Public ✅
+    → Add README: OFF (já temos)
+    → Add .gitignore: No (já temos)
+    → Add license: No (já temos)
+
+2️⃣  NO TERMINAL LINUX, EXECUTE:
+
+    cd /mnt/agents/output/openconnect-gateway-v4/
+    bash DEPLOY_SCRIPT.sh
+
+    OU manualmente:
+
+    cd /mnt/agents/output/openconnect-gateway-v4/
+    git init
+    git add .
+    git commit -m "OpenConnect Gateway v4.0"
+    git branch -M main
+    git remote add origin https://github.com/samir-velleda/openconnect.git
+    git push -u origin main
+
+3️⃣  VERIFIQUE NO GITHUB:
+    Acesse: https://github.com/samir-velleda/openconnect
+    Confirme que todos os 20 arquivos estão lá.
+
+4️⃣  TESTE O ONE-LINER EM VM LIMPA:
+    curl -fsSL https://raw.githubusercontent.com/samir-velleda/openconnect/main/install.sh | bash
+
+═══════════════════════════════════════════════════════════════════════════════
+🔄 COMO FUNCIONA O AUTO-UPDATE
+═══════════════════════════════════════════════════════════════════════════════
+
+Você edita código → git push → Supervisor detecta (~5 min) → 
+→ Cria backup → Valida sintaxe → Aplica update → Reinicia gateway
+
+Arquivos rastreados para auto-update:
+  • openconnect-gateway.py
+  • supervisor.py
+  • requirements.txt
+  • scripts/health_check.sh
+  • scripts/tunnel_check.sh
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️  IMPORTANTE: CONFIGURAR PERMISSÕES DE EXECUÇÃO NO GIT
+═══════════════════════════════════════════════════════════════════════════════
+
+Execute ANTES do push:
+
+    cd /mnt/agents/output/openconnect-gateway-v4/
+    git update-index --chmod=+x install.sh
+    git update-index --chmod=+x openconnect-gateway.py
+    git update-index --chmod=+x supervisor.py
+    git update-index --chmod=+x validate.sh
+    git update-index --chmod=+x DEPLOY_SCRIPT.sh
+    git update-index --chmod=+x scripts/health_check.sh
+    git update-index --chmod=+x scripts/tunnel_check.sh
+    git commit -m "fix permissions" --no-verify
+    git push origin main
+
+═══════════════════════════════════════════════════════════════════════════════
+🔧 COMANDOS APÓS INSTALAÇÃO NAS LOJAS
+═══════════════════════════════════════════════════════════════════════════════
+
+sudo systemctl status openconnect-gateway
+sudo systemctl restart openconnect-gateway
+sudo systemctl status openconnect-supervisor
+sudo journalctl -u openconnect-gateway -f
+sudo /opt/openconnect-gateway/scripts/health_check.sh
+sudo /opt/openconnect-gateway/scripts/tunnel_check.sh
+
+═══════════════════════════════════════════════════════════════════════════════

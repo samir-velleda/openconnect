@@ -1,0 +1,132 @@
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║           ✅ OPENCONNECT GATEWAY v4.0 - REPOSITÓRIO COMPLETO               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📁 Local: /mnt/agents/output/openconnect-gateway-v4/
+📊 18 arquivos | ~91 KB | Pronto para Git
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 COMANDO ONE-LINER PARA INSTALAÇÃO (APÓS SUBIR NO GIT)
+═══════════════════════════════════════════════════════════════════════════════
+
+curl -fsSL https://raw.githubusercontent.com/samir-velleda/openconnect/main/install.sh | bash
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 PASSO A PASSO PARA COLOCAR NO AR
+═══════════════════════════════════════════════════════════════════════════════
+
+1️⃣  SUBSTITUIR PLACEHOLDERS NO install.sh
+    Edite install.sh e troque:
+      openconnect          → nome do seu usuário/organização
+      samir-velleda       → seu usuário do GitHub
+      openconnect          → nome do repositório
+
+2️⃣  CONFIGURAR config.yaml (template padrão)
+    Edite config.yaml com URLs reais da sua infraestrutura
+
+3️⃣  VALIDAR ANTES DO DEPLOY
+    cd /mnt/agents/output/openconnect-gateway-v4/
+    bash validate.sh
+
+4️⃣  SUBIR PARA O GIT
+    git init
+    git add .
+    git commit -m "OpenConnect Gateway v4.0"
+    git remote add origin https://github.com/samir-velleda/openconnect.git
+    git push -u origin main
+
+5️⃣  TESTAR EM VM LIMPA
+    curl -fsSL https://raw.githubusercontent.com/samir-velleda/openconnect/main/install.sh | bash
+
+═══════════════════════════════════════════════════════════════════════════════
+🏗️ O QUE O SISTEMA FAZ
+═══════════════════════════════════════════════════════════════════════════════
+
+GATEWAY PRINCIPAL (openconnect-gateway.py)
+  • Multi-threading: ThreadPoolExecutor com workers configuráveis
+  • Retry automático: backoff exponencial em falhas de rede
+  • Pool HTTP persistente: conexões reutilizadas, menos overhead
+  • Graceful shutdown: trata SIGTERM/SIGINT corretamente
+  • Hot-reload: recarrega config.yaml sem reiniciar o serviço
+  • Métricas JSON: salva estatísticas em tempo real
+  • HMAC signature: assina payloads com webhook_secret
+  • Rate limiting: evita sobrecarga do orchestrator
+
+SUPERVISOR (supervisor.py) — AGENTE DE AUTO-UPDATE
+  • Monitora gateway a cada 60s (health check)
+  • Reinicia automaticamente se gateway morrer
+  • Verifica Git a cada 5 minutos por atualizações
+  • Cria backup ANTES de qualquer mudança
+  • Valida sintaxe Python antes de aplicar
+  • Restaura backup automaticamente se update falhar
+  • Rate limit de reinícios: máx 5 por hora
+
+INSTALADOR (install.sh) — ONE-LINER
+  • Detecta distro Linux (Ubuntu/Debian/CentOS/Arch)
+  • Instala Python 3.8+, pip, curl, jq automaticamente
+  • Baixa TODOS os arquivos do repositório Git
+  • Cria ambiente virtual em /opt/openconnect-gateway/venv/
+  • Cria usuário dedicado "openconnect" (não roda como root)
+  • Configura 2 serviços systemd (gateway + supervisor)
+  • Pergunta configurações básicas interativamente
+  • Inicia tudo automaticamente
+
+═══════════════════════════════════════════════════════════════════════════════
+📂 ESTRUTURA COMPLETA DO REPOSITÓRIO
+═══════════════════════════════════════════════════════════════════════════════
+
+openconnect-gateway/
+├── install.sh                    ← One-liner installer (9 KB)
+├── openconnect-gateway.py        ← Gateway principal (23 KB)
+├── supervisor.py                 ← Agente auto-update (20 KB)
+├── requirements.txt              ← Dependências Python
+├── config.yaml                   ← Template de configuração
+├── README.md                     ← Documentação completa (9 KB)
+├── DEPLOY.md                     ← Guia de deploy no Git
+├── CHANGELOG.md                  ← Histórico de versões
+├── LICENSE                       ← MIT License
+├── VERSION                       ← 4.0.0
+├── Makefile                      ← Comandos de dev
+├── validate.sh                   ← Validador pré-deploy
+├── .gitignore                    ← Exclusões do Git
+├── systemd/
+│   ├── openconnect-gateway.service      ← Serviço systemd
+│   └── openconnect-supervisor.service   ← Serviço supervisor
+└── scripts/
+    ├── health_check.sh           ← Diagnóstico completo
+    └── tunnel_check.sh           ← Verificação de túneis
+
+═══════════════════════════════════════════════════════════════════════════════
+🔧 COMANDOS APÓS INSTALAÇÃO
+═══════════════════════════════════════════════════════════════════════════════
+
+sudo systemctl status openconnect-gateway
+sudo systemctl restart openconnect-gateway
+sudo systemctl status openconnect-supervisor
+sudo journalctl -u openconnect-gateway -f
+sudo /opt/openconnect-gateway/scripts/health_check.sh
+sudo /opt/openconnect-gateway/scripts/tunnel_check.sh
+
+═══════════════════════════════════════════════════════════════════════════════
+🔄 WORKFLOW DE ATUALIZAÇÃO (VOCÊ → GIT → GATEWAYS)
+═══════════════════════════════════════════════════════════════════════════════
+
+Você edita código → git push → Supervisor detecta em ~5min → 
+→ Cria backup → Valida sintaxe → Aplica update → Reinicia gateway
+
+Se falhar: restaura backup automaticamente. Zero downtime.
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️ IMPORTANTE: PERMISSÕES DE EXECUÇÃO
+═══════════════════════════════════════════════════════════════════════════════
+
+O ambiente sandbox não preservou chmod +x. Execute no terminal:
+
+chmod +x install.sh openconnect-gateway.py supervisor.py validate.sh
+chmod +x scripts/health_check.sh scripts/tunnel_check.sh
+
+Ou configure no Git:
+git update-index --chmod=+x install.sh openconnect-gateway.py supervisor.py
+
+═══════════════════════════════════════════════════════════════════════════════

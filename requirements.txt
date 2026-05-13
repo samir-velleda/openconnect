@@ -1,0 +1,16 @@
+# OpenConnect Gateway v4.0 - Dependências Python
+# Instalar: pip install -r requirements.txt
+
+# HTTP Client
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Configuração
+PyYAML>=6.0.1
+
+# Utilitários
+python-dateutil>=2.8.2
+
+# Cloudflare R2 (S3-compatible)
+boto3>=1.34.0
+botocore>=1.34.0

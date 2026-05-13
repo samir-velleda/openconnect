@@ -1,0 +1,120 @@
+# OpenConnect Gateway v4.0 - Configuração
+# ==========================================
+# Edite este arquivo conforme necessário.
+# O gateway recarrega configuração automaticamente.
+
+orchestrator:
+  url: "https://orch.carrinhovirtual.com/process"
+  timeout: 30
+  retry_attempts: 3
+  retry_delay: 5
+  verify_ssl: true
+  fallback_url: ""
+
+go2rtc:
+  base_url: "https://go2rtc.carrinhovirtual.com"
+  api_frame: "/api/frame.jpeg"
+  timeout: 15
+  verify_ssl: true
+
+store:
+  id: "grupomateus"
+  name: "Loja Principal"
+  location: "São Paulo - SP"
+
+processing:
+  threads: 5
+  interval_seconds: 60
+  batch_size: 10
+  max_retries: 3
+  retry_delay: 5
+  enable_streaming: true
+  enable_snapshots: true
+  enable_clips: false
+
+security:
+  webhook_secret: ""
+  encrypt_payloads: false
+  allowed_hosts: []
+  rate_limit: 100
+
+supervisor:
+  enabled: true
+  check_interval: 300
+  auto_update: true
+  update_channel: "stable"
+  repo_url: "https://github.com/samir-velleda/openconnect"
+  raw_url: "https://raw.githubusercontent.com/samir-velleda/openconnect/main"
+  backup_before_update: true
+  max_backups: 5
+  health_check_interval: 60
+  restart_on_failure: true
+  max_restarts: 5
+  restart_window: 3600
+
+logging:
+  level: "INFO"
+  file: "/var/log/openconnect-gateway/gateway.log"
+  max_size_mb: 100
+  backup_count: 10
+  format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+
+r2:
+  enabled: false
+  endpoint: "https://<account-id>.r2.cloudflarestorage.com"
+  bucket: "openconnect-clips"
+  access_key: ""
+  secret_key: ""
+  region: "auto"
+  presigned_url_ttl: 3600
+
+# Configuração das câmeras
+# Cada câmera pode ter múltiplas funções: snapshot, stream, clip
+cameras:
+  - id: "1013101"
+    name: "Entrada Principal"
+    functions: ["snapshot", "stream"]
+    priority: 1
+    enabled: true
+
+  - id: "1013106"
+    name: "Caixa 01"
+    functions: ["snapshot"]
+    priority: 2
+    enabled: true
+
+  - id: "101311"
+    name: "Caixa 02"
+    functions: ["snapshot"]
+    priority: 2
+    enabled: true
+
+  - id: "1013113"
+    name: "Corredor"
+    functions: ["snapshot", "stream"]
+    priority: 3
+    enabled: true
+
+  - id: "1013115"
+    name: "Estacionamento"
+    functions: ["snapshot"]
+    priority: 4
+    enabled: true
+
+# Túneis Cloudflare para equipamentos FaceID
+cloudflare_tunnels:
+  enabled: false
+  account_id: ""
+  api_token: ""
+  zone_id: ""
+
+  tunnels:
+    # Exemplo: Hikvision FaceID
+    - name: "faceid-entrada"
+      hostname: "faceid-entrada.carrinhovirtual.com"
+      service: "http://192.168.1.100:80"
+
+    # Exemplo: Intelbras FaceID
+    - name: "faceid-caixa"
+      hostname: "faceid-caixa.carrinhovirtual.com"  
+      service: "http://192.168.1.101:80"

@@ -1,0 +1,73 @@
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║     📥 COMO IMPORTAR DO SEU COMPUTADOR PARA O GITHUB                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Os arquivos estão no AMBIENTE KIMI (não no seu computador ainda).
+
+═══════════════════════════════════════════════════════════════════════════════
+📥 PASSO 1: BAIXAR OS ARQUIVOS PARA SEU COMPUTADOR
+═══════════════════════════════════════════════════════════════════════════════
+
+Clique neste link para baixar:
+→ [openconnect-gateway-v4.tar.gz](sandbox:///mnt/agents/output/openconnect-gateway-v4.tar.gz)
+
+O arquivo será salvo na pasta Downloads do seu computador.
+
+═══════════════════════════════════════════════════════════════════════════════
+📂 PASSO 2: EXTRAIR NO TERMINAL DO SEU COMPUTADOR
+═══════════════════════════════════════════════════════════════════════════════
+
+Abra o TERMINAL LINUX no seu computador e cole:
+
+    cd ~/Downloads
+    tar -xzf openconnect-gateway-v4.tar.gz
+    cd openconnect-gateway-v4/
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 PASSO 3: ENVIAR PARA O GITHUB
+═══════════════════════════════════════════════════════════════════════════════
+
+Ainda no terminal do seu computador, cole ESTES comandos:
+
+    git init
+    git add .
+    git commit -m "OpenConnect Gateway v4.0"
+    git branch -M main
+    git remote add origin https://github.com/samir-velleda/openconnect.git
+    git push -u origin main
+
+═══════════════════════════════════════════════════════════════════════════════
+🔑 SE PEDIR SENHA (VAI PEDIR!)
+═══════════════════════════════════════════════════════════════════════════════
+
+O GitHub NÃO aceita senha normal. Você precisa de um TOKEN:
+
+1. Acesse no navegador: https://github.com/settings/tokens
+2. Clique: "Generate new token (classic)"
+3. Dê um nome: "OpenConnect Gateway"
+4. MARQUE a caixinha: ☑️ "repo" (acesso total ao repositório)
+5. Clique: "Generate token" no final da página
+6. COPIE o token (código longo que aparece)
+7. Cole no terminal quando pedir senha
+
+⚠️  Guarde esse token! Você vai precisar dele para futuros pushes.
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ PASSO 4: VERIFICAR
+═══════════════════════════════════════════════════════════════════════════════
+
+Acesse no navegador:
+→ https://github.com/samir-velleda/openconnect
+
+Deve aparecer todos os arquivos (install.sh, openconnect-gateway.py, etc.)
+
+═══════════════════════════════════════════════════════════════════════════════
+🧪 PASSO 5: TESTAR O ONE-LINER
+═══════════════════════════════════════════════════════════════════════════════
+
+Em qualquer VM Linux limpa, execute:
+
+    curl -fsSL https://raw.githubusercontent.com/samir-velleda/openconnect/main/install.sh | bash
+
+═══════════════════════════════════════════════════════════════════════════════

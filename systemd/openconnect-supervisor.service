@@ -1,0 +1,29 @@
+[Unit]
+Description=OpenConnect Supervisor v10.0.6 - Auto-Update & Monitoring
+Documentation=https://github.com/openconnect/openconnect-gateway
+After=openconnect-gateway.service
+Wants=openconnect-gateway.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/openconnect-gateway
+Environment="OPENCONNECT_CONFIG=/etc/openconnect-gateway/config.yaml"
+Environment="PYTHONUNBUFFERED=1"
+
+ExecStart=/opt/openconnect-gateway/venv/bin/python3 /opt/openconnect-gateway/supervisor.py
+
+# Reinício automático
+Restart=on-failure
+RestartSec=10
+StartLimitInterval=3600
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openconnect-supervisor
+
+[Install]
+WantedBy=multi-user.target

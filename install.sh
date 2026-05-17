@@ -1,389 +1,480 @@
 #!/bin/bash
 # =============================================================================
-# OpenConnect Gateway v4.0 - One-Liner Installer (COMPLETO)
+# OPENCONECT TITAN GATEWAY v2.0 — INSTALADOR OFICIAL
+# Uso: curl -sL ... | sudo bash -s -- --gateway-id <uuid> --token <uuid>
 # =============================================================================
-# Uso: curl -fsSL https://raw.githubusercontent.com/samir-velleda/openconnect/main/install.sh | sudo bash
-# =============================================================================
+set -e
 
-set -euo pipefail
+# --- Parse argumentos ---
+GATEWAY_ID=""
+CONFIG_TOKEN=""
+SUPABASE_URL="https://tsvigycstpfdhgriqbfe.supabase.co"
+SUPABASE_ANON_KEY="sb_publishable_clGrlyN8z7VkUOOLvBtdiQ_zLoIi6kM"
 
-REPO_URL="https://github.com/samir-velleda/openconnect"
-RAW_URL="https://raw.githubusercontent.com/samir-velleda/openconnect/main"
-INSTALL_DIR="/opt/openconnect-gateway"
-CONFIG_DIR="/etc/openconnect-gateway"
-LOG_DIR="/var/log/openconnect-gateway"
-SERVICE_NAME="openconnect-gateway"
-PYTHON_BIN="python3"
-
-color() { echo -e "\e[${1}m${2}\e[0m"; }
-info()  { color "36" "[INFO] $1"; }
-ok()    { color "32" "[OK]   $1"; }
-warn()  { color "33" "[WARN] $1"; }
-err()   { color "31" "[ERR]  $1"; exit 1; }
-
-# ---- Detectar distro ----
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    DISTRO=$ID
-else
-    err "Não foi possível detectar a distribuição Linux"
-fi
-
-info "OpenConnect Gateway v10.0.6 - Instalador Completo"
-info "Distribuição detectada: $DISTRO"
-
-# ---- Verificar root ----
-if [ "$EUID" -ne 0 ]; then
-    err "Execute como root: sudo bash install.sh"
-fi
-
-# ---- Verificar Python 3.8+ ----
-info "Verificando Python 3.8+..."
-if ! command -v $PYTHON_BIN &> /dev/null; then
-    info "Instalando Python3..."
-    if [ "$DISTRO" = "ubuntu" ] || [ "$DISTRO" = "debian" ]; then
-        apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv curl wget jq
-    elif [ "$DISTRO" = "centos" ] || [ "$DISTRO" = "rhel" ] || [ "$DISTRO" = "rocky" ] || [ "$DISTRO" = "almalinux" ]; then
-        dnf install -y python3 python3-pip curl wget jq
-    elif [ "$DISTRO" = "arch" ] || [ "$DISTRO" = "manjaro" ]; then
-        pacman -Sy --noconfirm python python-pip curl wget jq
-    else
-        err "Distribuição não suportada. Instale manualmente: python3, pip, curl, wget, jq"
-    fi
-fi
-
-PY_VER=$($PYTHON_BIN -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-info "Python $PY_VER detectado"
-
-# ---- Verificar dependências ----
-info "Verificando dependências do sistema..."
-for cmd in curl wget jq systemctl; do
-    if ! command -v $cmd &> /dev/null; then
-        warn "$cmd não encontrado. Tentando instalar..."
-        if [ "$DISTRO" = "ubuntu" ] || [ "$DISTRO" = "debian" ]; then
-            apt-get install -y -qq $cmd
-        elif [ "$DISTRO" = "centos" ] || [ "$DISTRO" = "rhel" ] || [ "$DISTRO" = "rocky" ]; then
-            dnf install -y $cmd
-        fi
-    fi
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --gateway-id) GATEWAY_ID="$2"; shift 2 ;;
+        --token) CONFIG_TOKEN="$2"; shift 2 ;;
+        --supabase-url) SUPABASE_URL="$2"; shift 2 ;;
+        --supabase-anon-key) SUPABASE_ANON_KEY="$2"; shift 2 ;;
+        *) echo "Uso: $0 --gateway-id <uuid> --token <uuid>"; exit 1 ;;
+    esac
 done
 
-# ---- Verificar cloudflared ----
-info "Verificando cloudflared..."
-if ! command -v cloudflared &> /dev/null; then
-    info "Instalando cloudflared..."
-    wget -q "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb" -O /tmp/cloudflared.deb 2>/dev/null
-    dpkg -i /tmp/cloudflared.deb 2>/dev/null || apt-get install -f -y -qq 2>/dev/null || true
-    rm -f /tmp/cloudflared.deb
+if [ -z "$GATEWAY_ID" ] || [ -z "$CONFIG_TOKEN" ]; then
+    echo "❌ ERRO: --gateway-id e --token são obrigatórios"
+    exit 1
 fi
 
-# ---- Verificar python3-venv ----
-info "Verificando módulo venv..."
-if ! $PYTHON_BIN -m venv --help >/dev/null 2>&1; then
-    info "Instalando python3-venv..."
-    if [ "$DISTRO" = "ubuntu" ] || [ "$DISTRO" = "debian" ]; then
-        PY_MAJOR=$($PYTHON_BIN -c "import sys; print(sys.version_info.major)")
-        PY_MINOR=$($PYTHON_BIN -c "import sys; print(sys.version_info.minor)")
-        apt-get install -y -qq python${PY_MAJOR}.${PY_MINOR}-venv python3-pip python3-dev
-    elif [ "$DISTRO" = "centos" ] || [ "$DISTRO" = "rhel" ] || [ "$DISTRO" = "rocky" ] || [ "$DISTRO" = "almalinux" ]; then
-        dnf install -y python3-venv python3-pip python3-devel
-    elif [ "$DISTRO" = "arch" ] || [ "$DISTRO" = "manjaro" ]; then
-        pacman -Sy --noconfirm python-virtualenv python-pip
-    fi
-fi
+# --- Config fixa ---
+RUNPOD_IP="69.30.85.241"
+RUNPOD_PORT="22188"
+GO2RTC_VER="1.9.13"
+HEARTBEAT_INTERVAL=30
+VERSION="2.0.0"
 
-# ---- Criar diretórios ----
-info "Criando diretórios..."
-mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$LOG_DIR"
-mkdir -p "$INSTALL_DIR/scripts" "$INSTALL_DIR/.backup"
+# --- Paths ---
+INSTALL_DIR="/opt/openconnect-gateway"
+ENV_FILE="/etc/openconnect/gateway.env"
+GO2RTC_DIR="/opt/go2rtc"
+LOG_DIR="/var/log/openconnect-gateway"
 
-# ---- Baixar arquivos do Git ----
-info "Baixando arquivos do repositório..."
-cd "$INSTALL_DIR"
-
-download() {
-    local file=$1
-    local dest=$2
-    local max_retries=3
-    local retry=0
-    while [ $retry -lt $max_retries ]; do
-        if curl -fsSL --connect-timeout 15 --max-time 60 "${RAW_URL}/${file}" -o "$dest" 2>/dev/null; then
-            return 0
-        fi
-        retry=$((retry + 1))
-        warn "Tentativa $retry/$max_retries falhou para $file. Retentando..."
-        sleep 2
-    done
-    err "Falha ao baixar $file após $max_retries tentativas"
-}
-
-download "openconnect-gateway.py" "$INSTALL_DIR/openconnect-gateway.py"
-download "supervisor.py" "$INSTALL_DIR/supervisor.py"
-download "tunnel_manager.py" "$INSTALL_DIR/tunnel_manager.py"
-download "requirements.txt" "$INSTALL_DIR/requirements.txt"
-download "config.yaml" "$CONFIG_DIR/config.yaml"
-download "scripts/health_check.sh" "$INSTALL_DIR/scripts/health_check.sh"
-download "scripts/tunnel_check.sh" "$INSTALL_DIR/scripts/tunnel_check.sh"
-download "systemd/openconnect-gateway.service" "/etc/systemd/system/${SERVICE_NAME}.service"
-download "systemd/openconnect-supervisor.service" "/etc/systemd/system/${SERVICE_NAME}-supervisor.service"
-
-chmod +x "$INSTALL_DIR/openconnect-gateway.py"
-chmod +x "$INSTALL_DIR/supervisor.py"
-chmod +x "$INSTALL_DIR/scripts/"*.sh
-
-# PATCH DEFINITIVO: garantir import threading no supervisor
-if ! grep -q "import threading" "$INSTALL_DIR/supervisor.py" 2>/dev/null; then
-    info "Aplicando patch crítico: import threading no supervisor.py"
-    sed -i '1s/^/import threading
-/' "$INSTALL_DIR/supervisor.py"
-fi
-
-ok "Arquivos baixados com sucesso"
-
-# ---- Criar ambiente virtual ----
-info "Criando ambiente virtual Python..."
-cd "$INSTALL_DIR"
-$PYTHON_BIN -m venv venv --system-site-packages 2>/dev/null || $PYTHON_BIN -m venv venv
-source venv/bin/activate
-
-info "Instalando dependências Python..."
-pip install --upgrade pip -q
-pip install -r requirements.txt -q
-
-ok "Dependências instaladas"
-
-# ---- Configurar permissões ----
-info "Configurando permissões..."
-useradd -r -s /bin/false openconnect 2>/dev/null || true
-chown -R openconnect:openconnect "$INSTALL_DIR" "$CONFIG_DIR" "$LOG_DIR"
-chmod 750 "$CONFIG_DIR"
-chmod 640 "$CONFIG_DIR/config.yaml"
-
-# ---- Configurar systemd ----
-info "Configurando serviços systemd..."
-systemctl daemon-reload
-systemctl enable "$SERVICE_NAME"
-systemctl enable "${SERVICE_NAME}-supervisor"
-
-# ---- Configurações do gateway ----
-echo ""
-color "35" "═══════════════════════════════════════════════════════"
-color "35" "  CONFIGURAÇÃO INICIAL DO GATEWAY"
-color "35" "═══════════════════════════════════════════════════════"
+echo "========================================"
+echo "  OPENCONECT TITAN GATEWAY v${VERSION}"
+echo "  Gateway ID: ${GATEWAY_ID}"
+echo "========================================"
 echo ""
 
-# Detectar se estamos em modo interativo (terminal) ou pipe (curl | bash)
-if [ -t 0 ]; then
-    read -p "URL do Orchestrator (ex: https://orch.carrinhovirtual.com/process): " ORCH_URL
-    read -p "URL do go2rtc (ex: https://go2rtc.carrinhovirtual.com): " GO2RTC_URL
-    read -p "Store ID (ex: grupomateus): " STORE_ID
-    read -p "Número de threads paralelas [5]: " THREADS
-    THREADS=${THREADS:-5}
-    read -p "Intervalo entre ciclos em segundos [60]: " INTERVAL
-    INTERVAL=${INTERVAL:-60}
-    read -p "Webhook Secret (deixe em branco para gerar automático): " WEBHOOK_SECRET
-else
-    info "Modo não-interativo detectado. Usando valores padrão ou variáveis de ambiente."
-    ORCH_URL=${ORCH_URL:-"https://orch.carrinhovirtual.com/process"}
-    GO2RTC_URL=${GO2RTC_URL:-"https://go2rtc-t1.carrinhovirtual.com"}
-    STORE_ID=${STORE_ID:-"grupomateus"}
-    THREADS=${THREADS:-5}
-    INTERVAL=${INTERVAL:-60}
-    WEBHOOK_SECRET=${WEBHOOK_SECRET:-""}
-    info "Para personalizar, defina variáveis antes do comando: ORCH_URL=... GO2RTC_URL=... STORE_ID=... curl ... | bash"
+# [1] Dependências
+echo "[1/9] Instalando dependências..."
+apt-get update -qq >/dev/null 2>&1
+apt-get install -y -qq ffmpeg curl wget systemd jq python3 python3-pip 2>/dev/null || true
+pip3 install fastapi uvicorn boto3 requests pyyaml -q 2>/dev/null || true
+
+# [2] Criar diretórios e env file
+echo "[2/9] Criando diretórios e gateway.env..."
+mkdir -p ${INSTALL_DIR} ${LOG_DIR} ${GO2RTC_DIR} /etc/openconnect
+
+cat > ${ENV_FILE} <<EOF
+GATEWAY_ID=${GATEWAY_ID}
+CONFIG_TOKEN=${CONFIG_TOKEN}
+RUNPOD_IP=${RUNPOD_IP}
+RUNPOD_PORT=${RUNPOD_PORT}
+HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL}
+SUPABASE_URL=${SUPABASE_URL}
+SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+VERSION=${VERSION}
+EOF
+chmod 600 ${ENV_FILE}
+
+# [3] go2rtc
+echo "[3/9] Instalando go2rtc v${GO2RTC_VER}..."
+if [ ! -f /usr/local/bin/go2rtc ]; then
+    wget -q "https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_VER}/go2rtc_linux_amd64" -O /usr/local/bin/go2rtc
+    chmod +x /usr/local/bin/go2rtc
 fi
 
-# Garantir valores padrão se ainda vazio
-ORCH_URL=${ORCH_URL:-"https://orch.carrinhovirtual.com/process"}
-GO2RTC_URL=${GO2RTC_URL:-"https://go2rtc-t1.carrinhovirtual.com"}
-STORE_ID=${STORE_ID:-"grupomateus"}
-THREADS=${THREADS:-5}
-INTERVAL=${INTERVAL:-60}
-
-if [ -z "$WEBHOOK_SECRET" ]; then
-    WEBHOOK_SECRET=$(openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 64)
-    info "Webhook Secret gerado automaticamente"
-fi
-
-# R2 (mesmas credenciais para todas as lojas — Cloudflare R2)
-R2_ENDPOINT_PREFIX="https://1f82f95cb4f2081d817987c384ddfdf9"
-    R2_ENDPOINT_SUFFIX=".r2.cloudflarestorage.com"
-    R2_ENDPOINT="${R2_ENDPOINT:-${R2_ENDPOINT_PREFIX}${R2_ENDPOINT_SUFFIX}}"
-R2_BUCKET="${R2_BUCKET:-openmart}"
-R2_ACCESS_KEY_PART1="625f65e44e5c"
-    R2_ACCESS_KEY_PART2="61f791b545ba"
-    R2_ACCESS_KEY_PART3="c4cbb393"
-    R2_ACCESS_KEY="${R2_ACCESS_KEY:-${R2_ACCESS_KEY_PART1}${R2_ACCESS_KEY_PART2}${R2_ACCESS_KEY_PART3}}"
-R2_SECRET_KEY_PART1="14a636bcb114781f4953"
-    R2_SECRET_KEY_PART2="ade6be8302403b3c1dd"
-    R2_SECRET_KEY_PART3="55e03dd0b2c8cd8824672e817"
-    R2_SECRET_KEY="${R2_SECRET_KEY:-${R2_SECRET_KEY_PART1}${R2_SECRET_KEY_PART2}${R2_SECRET_KEY_PART3}}"
-
-# R2: ativar se credenciais foram fornecidas
-if [ -n "$R2_ACCESS_KEY" ] && [ -n "$R2_SECRET_KEY" ] && [ -n "$R2_ENDPOINT" ]; then
-    R2_ENABLED="true"
-    info "R2 configurado para upload de clips"
-else
-    R2_ENABLED="false"
-    info "R2 não configurado. Para ativar, passe: R2_ENDPOINT=... R2_ACCESS_KEY=... R2_SECRET_KEY=..."
-fi
-
-# ---- Gerar config.yaml ----
-cat > "$CONFIG_DIR/config.yaml" <<EOF
-# OpenConnect Gateway v4.0 - Configuração
-# Gerado automaticamente em $(date -Iseconds)
-
-orchestrator:
-  url: "${ORCH_URL}"
-  timeout: 30
-  retry_attempts: 3
-  retry_delay: 5
-  verify_ssl: true
-  fallback_url: ""
-
-go2rtc:
-  base_url: "${GO2RTC_URL}"
-  api_frame: "/api/frame.jpeg"
-  timeout: 15
-  verify_ssl: true
-
-store:
-  id: "${STORE_ID}"
-  name: ""
-  location: ""
-
-processing:
-  threads: ${THREADS}
-  interval_seconds: ${INTERVAL}
-  batch_size: 10
-  max_retries: 3
-  retry_delay: 5
-  enable_streaming: true
-  enable_snapshots: true
-  enable_clips: true
-
-security:
-  webhook_secret: "${WEBHOOK_SECRET}"
-  encrypt_payloads: false
-  allowed_hosts: []
-  rate_limit: 100
-
-supervisor:
-  enabled: true
-  check_interval: 300
-  auto_update: true
-  update_channel: "stable"
-  repo_url: "${REPO_URL}"
-  raw_url: "${RAW_URL}"
-  backup_before_update: true
-  max_backups: 5
-  health_check_interval: 60
-  restart_on_failure: true
-  max_restarts: 5
-  restart_window: 3600
-
-logging:
-  level: "INFO"
-  file: "${LOG_DIR}/gateway.log"
-  max_size_mb: 100
-  backup_count: 10
-  format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-
-r2:
-  enabled: ${R2_ENABLED}
-  endpoint: "${R2_ENDPOINT}"
-  bucket: "${R2_BUCKET}"
-  access_key: "${R2_ACCESS_KEY}"
-  secret_key: "${R2_SECRET_KEY}"
-  region: "auto"
-  presigned_url_ttl: 3600
-
-cameras: []
+cat > ${GO2RTC_DIR}/go2rtc.yaml <<'EOF'
+api:
+  listen: ":1984"
+rtsp:
+  listen: ":8554"
+log:
+  level: info
+  format: text
+streams: {}
 EOF
 
-chown openconnect:openconnect "$CONFIG_DIR/config.yaml"
-chmod 640 "$CONFIG_DIR/config.yaml"
+# [4] Systemd go2rtc
+cat > /etc/systemd/system/go2rtc.service <<'EOF'
+[Unit]
+Description=go2rtc streaming server
+After=network.target
 
-ok "Configuração salva em $CONFIG_DIR/config.yaml"
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/go2rtc -config /opt/go2rtc/go2rtc.yaml
+Restart=always
+RestartSec=5
+User=root
 
-# ---- Configurar sincronização com Supabase (se token fornecido) ----
-CONFIG_TOKEN="${CONFIG_TOKEN:-}"
-CONFIG_URL="${CONFIG_URL:-}"
+[Install]
+WantedBy=multi-user.target
+EOF
 
-if [ -n "$CONFIG_TOKEN" ] && [ -n "$CONFIG_URL" ]; then
-    info "Configurando sincronização automática de config.yaml..."
-    echo "$CONFIG_TOKEN" > "$CONFIG_DIR/.config_token"
-    echo "$CONFIG_URL" > "$CONFIG_DIR/.config_url"
+# [5] API Python do Gateway — com ajustes do parecer
+echo "[5/9] Criando API do gateway..."
+cat > ${INSTALL_DIR}/gateway_api.py <<'PYEOF'
+#!/usr/bin/env python3
+"""
+OpenConnect Titan Gateway API v2.0
+Ajustes do parecer Lovable:
+- Heartbeat chama RPC real no Supabase
+- substream é boolean (True=sub, False=main)
+- enabled removido do payload (sempre True por contrato)
+"""
 
-    cat > "$INSTALL_DIR/sync-config.sh" <<'SYNC_EOF'
-#!/bin/bash
-CONFIG_DIR="/etc/openconnect-gateway"
-TOKEN=$(cat "$CONFIG_DIR/.config_token" 2>/dev/null)
-URL=$(cat "$CONFIG_DIR/.config_url" 2>/dev/null)
-if [ -n "$TOKEN" ] && [ -n "$URL" ]; then
-    curl -fsSL "${URL}&token=${TOKEN}" -o "$CONFIG_DIR/config.yaml" 2>/dev/null
-fi
-SYNC_EOF
-    chmod +x "$INSTALL_DIR/sync-config.sh"
+import os, json, time, subprocess, threading, logging, hashlib, copy
+from datetime import datetime
+from typing import List, Optional, Dict
+from fastapi import FastAPI, HTTPException, Header, Depends
+from pydantic import BaseModel
+import requests, yaml
 
-    (crontab -l 2>/dev/null | grep -v "sync-config.sh"; echo "*/15 * * * * $INSTALL_DIR/sync-config.sh") | crontab -
-    ok "Cron configurado: sincronização a cada 15 minutos"
-fi
+# --- Carregar env ---
+ENV_FILE = "/etc/openconnect/gateway.env"
+if os.path.exists(ENV_FILE):
+    with open(ENV_FILE) as f:
+        for line in f:
+            if '=' in line and not line.startswith('#'):
+                k, v = line.strip().split('=', 1)
+                os.environ.setdefault(k, v)
 
-# ---- Criar arquivo de versão ----
-echo "10.0.6" > "$INSTALL_DIR/.version"
-chown openconnect:openconnect "$INSTALL_DIR/.version"
+GATEWAY_ID    = os.getenv("GATEWAY_ID", "")
+CONFIG_TOKEN  = os.getenv("CONFIG_TOKEN", "")
+RUNPOD_IP     = os.getenv("RUNPOD_IP", "69.30.85.241")
+RUNPOD_PORT   = os.getenv("RUNPOD_PORT", "22188")
+HEARTBEAT_INT = int(os.getenv("HEARTBEAT_INTERVAL", "30"))
+SUPABASE_URL  = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY  = os.getenv("SUPABASE_ANON_KEY", "")
+VERSION       = os.getenv("VERSION", "2.0.0")
+GO2RTC_YAML   = "/opt/go2rtc/go2rtc.yaml"
+PUSH_LOG      = "/tmp/push_openconnect.log"
 
-# ---- Iniciar serviços ----
-info "Iniciando serviço gateway..."
-systemctl start "$SERVICE_NAME"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s|%(levelname)s|%(message)s"
+)
+logger = logging.getLogger("gateway-api")
+
+app = FastAPI(title="OpenConnect Titan Gateway API", version=VERSION)
+
+# --- Estado ---
+active_pushes: Dict[str, subprocess.Popen] = {}
+current_config_hash: str = ""
+config_version: int = 0
+
+# --- Modelos (ajustados do parecer) ---
+class CameraConfig(BaseModel):
+    camera_id: str
+    name: str
+    stream_url: str
+    snapshot_url: Optional[str] = ""
+    role: Optional[str] = "streaming"
+    substream: Optional[bool] = False   # True=sub, False=main (boolean!)
+    ia_snapshot_interval_ms: Optional[int] = 2000
+    device_id: Optional[str] = ""
+    # NOTA: enabled removido — toda câmera no array é ativa por contrato
+
+class GatewayConfigPayload(BaseModel):
+    gateway_id: str
+    store_id: str
+    company_id: str
+    cameras: List[CameraConfig]
+
+# --- Auth ---
+def verify_token(authorization: Optional[str] = Header(None, alias="Authorization")):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid Authorization format")
+    if parts[1] != CONFIG_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return parts[1]
+
+# --- Helpers ---
+def reload_go2rtc():
+    try:
+        requests.post("http://127.0.0.1:1984/api/restart", timeout=5)
+        logger.info("go2rtc recarregado via API")
+    except Exception as e:
+        logger.warning(f"API reload falhou: {e}")
+        os.system("systemctl restart go2rtc.service")
+        time.sleep(3)
+
+def write_go2rtc_yaml(cameras: List[CameraConfig]):
+    config = {
+        "api": {"listen": ":1984"},
+        "rtsp": {"listen": ":8554"},
+        "log": {"level": "info", "format": "text"},
+        "streams": {}
+    }
+    for cam in cameras:
+        if cam.stream_url:
+            # Se substream=True, adiciona sufixo _sub no ID interno se necessário
+            # Mas o go2rtc usa a URL direta — o mapeamento é do lado do frontend
+            config["streams"][cam.camera_id] = cam.stream_url
+    with open(GO2RTC_YAML, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+    reload_go2rtc()
+
+def start_push(camera_id: str):
+    global active_pushes
+    if camera_id in active_pushes:
+        active_pushes[camera_id].poll()
+        if active_pushes[camera_id].returncode is None:
+            return
+    rtsp = f"rtsp://127.0.0.1:8554/{camera_id}"
+    rtmp = f"rtmp://{RUNPOD_IP}:{RUNPOD_PORT}/live/{camera_id}"
+    proc = subprocess.Popen(
+        ["ffmpeg", "-hide_banner", "-loglevel", "warning",
+         "-rtsp_transport", "tcp", "-i", rtsp,
+         "-c", "copy", "-f", "flv", rtmp],
+        stdout=open(PUSH_LOG, "a"),
+        stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL
+    )
+    active_pushes[camera_id] = proc
+    logger.info(f"Push iniciado: {camera_id} -> {rtmp} (PID {proc.pid})")
+
+def stop_push(camera_id: str):
+    global active_pushes
+    if camera_id in active_pushes:
+        try:
+            active_pushes[camera_id].terminate()
+            time.sleep(1)
+            active_pushes[camera_id].kill()
+        except:
+            pass
+        del active_pushes[camera_id]
+        logger.info(f"Push parado: {camera_id}")
+
+def get_system_metrics():
+    try:
+        with open('/proc/loadavg') as f:
+            load = f.read().split()[0]
+        with open('/proc/meminfo') as f:
+            mem = f.readlines()
+        mem_total = int(mem[0].split()[1])
+        mem_avail = int(mem[2].split()[1])
+        mem_pct = round((mem_total - mem_avail) / mem_total * 100, 1)
+        uptime = 0
+        with open('/proc/uptime') as f:
+            uptime = float(f.read().split()[0])
+        pushes_alive = len([p for p in active_pushes.values() if p.poll() is None])
+        return {
+            "cpu_load": float(load),
+            "mem_percent": mem_pct,
+            "uptime_s": int(uptime),
+            "pushes_active": pushes_alive,
+            "cameras_total": len(active_pushes),
+            "go2rtc_ok": False
+        }
+    except Exception as e:
+        logger.error(f"metrics error: {e}")
+        return {"cpu_load": 0, "mem_percent": 0, "uptime_s": 0, "pushes_active": 0, "cameras_total": 0, "go2rtc_ok": False}
+
+def send_heartbeat():
+    """Chama RPC update_gateway_heartbeat no Supabase a cada 30s"""
+    metrics = get_system_metrics()
+    try:
+        r = requests.get("http://127.0.0.1:1984/api/streams", timeout=2)
+        metrics["go2rtc_ok"] = r.status_code == 200
+    except:
+        metrics["go2rtc_ok"] = False
+
+    # --- CHAMADA REAL AO SUPABASE RPC ---
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            resp = requests.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/update_gateway_heartbeat",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "p_gateway_id": GATEWAY_ID,
+                    "p_version": VERSION,
+                    "p_metrics": metrics
+                },
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                logger.info(f"[HEARTBEAT] RPC OK — metrics={metrics}")
+            else:
+                logger.warning(f"[HEARTBEAT] RPC falhou: HTTP {resp.status_code} — {resp.text[:100]}")
+        except Exception as e:
+            logger.error(f"[HEARTBEAT] RPC erro: {e}")
+    else:
+        logger.warning("[HEARTBEAT] SUPABASE_URL ou SUPABASE_ANON_KEY não configurados — log local apenas")
+
+    threading.Timer(HEARTBEAT_INT, send_heartbeat).start()
+
+# Iniciar heartbeat
+threading.Timer(5, send_heartbeat).start()
+
+# --- Endpoints ---
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "version": VERSION,
+        "gateway_id": GATEWAY_ID,
+        "go2rtc": os.path.exists("/usr/local/bin/go2rtc"),
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+@app.get("/cameras", dependencies=[Depends(verify_token)])
+def list_cameras():
+    try:
+        with open(GO2RTC_YAML) as f:
+            cfg = yaml.safe_load(f)
+        streams = cfg.get("streams", {})
+        return {
+            "cameras": [
+                {"id": k, "stream_url": v, "pushing": k in active_pushes}
+                for k, v in streams.items()
+            ]
+        }
+    except Exception as e:
+        return {"cameras": [], "error": str(e)}
+
+@app.post("/config", dependencies=[Depends(verify_token)])
+def apply_config(payload: GatewayConfigPayload):
+    global current_config_hash, config_version
+
+    if payload.gateway_id != GATEWAY_ID:
+        raise HTTPException(status_code=403, detail="gateway_id mismatch")
+
+    # Hash para detectar mudança real
+    raw = json.dumps(payload.dict(), sort_keys=True)
+    new_hash = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    if new_hash == current_config_hash:
+        return {"status": "unchanged", "config_version": config_version, "config_hash": new_hash}
+
+    # Backup
+    backup = f"{GO2RTC_YAML}.bak.{int(time.time())}"
+    try:
+        import shutil
+        shutil.copy(GO2RTC_YAML, backup)
+    except:
+        pass
+
+    # Aplicar config
+    try:
+        write_go2rtc_yaml(payload.cameras)
+
+        # Parar pushes que sumiram
+        current_ids = {c.camera_id for c in payload.cameras}
+        for cid in list(active_pushes.keys()):
+            if cid not in current_ids:
+                stop_push(cid)
+
+        # Iniciar pushes novos (apenas se role != snapshot_only)
+        for cam in payload.cameras:
+            if cam.role == "snapshot_only":
+                logger.info(f"Câmera {cam.camera_id} em modo snapshot_only — sem push RTMP")
+                continue
+            start_push(cam.camera_id)
+
+        config_version += 1
+        current_config_hash = new_hash
+
+        return {
+            "status": "configured",
+            "config_version": config_version,
+            "config_hash": new_hash,
+            "cameras_active": len(payload.cameras),
+            "pushes_active": len(active_pushes)
+        }
+
+    except Exception as e:
+        if os.path.exists(backup):
+            shutil.copy(backup, GO2RTC_YAML)
+            reload_go2rtc()
+        logger.error(f"Config apply failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Config failed: {str(e)}")
+
+@app.get("/status", dependencies=[Depends(verify_token)])
+def gateway_status():
+    metrics = get_system_metrics()
+    status = {
+        "gateway_id": GATEWAY_ID,
+        "go2rtc_ok": metrics.pop("go2rtc_ok"),
+        "pushes": {},
+        "system": metrics
+    }
+    for cid, proc in active_pushes.items():
+        proc.poll()
+        status["pushes"][cid] = {
+            "running": proc.returncode is None,
+            "pid": proc.pid,
+            "returncode": proc.returncode
+        }
+    return status
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8082)
+PYEOF
+
+chmod +x ${INSTALL_DIR}/gateway_api.py
+
+# [6] Systemd API
+echo "[6/9] Configurando systemd..."
+cat > /etc/systemd/system/openconnect-api.service <<EOF
+[Unit]
+Description=OpenConnect Titan Gateway API v2.0
+After=go2rtc.service network.target
+Requires=go2rtc.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 ${INSTALL_DIR}/gateway_api.py
+Restart=always
+RestartSec=5
+User=root
+EnvironmentFile=${ENV_FILE}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# [7] Iniciar serviços
+echo "[7/9] Iniciando serviços..."
+systemctl daemon-reload
+systemctl enable go2rtc.service openconnect-api.service
+systemctl start go2rtc.service
 sleep 2
+systemctl start openconnect-api.service
+sleep 3
 
-if systemctl is-active --quiet "$SERVICE_NAME"; then
-    ok "Gateway iniciado com sucesso!"
+# [8] Validar
+echo "[8/9] Validando instalação..."
+HEALTH=$(curl -s http://127.0.0.1:8082/health 2>/dev/null || echo "")
+if echo "$HEALTH" | grep -q "ok"; then
+    echo "✅ Gateway API respondendo em http://localhost:8082"
 else
-    warn "Gateway não iniciou automaticamente. Verifique: journalctl -u $SERVICE_NAME -n 50"
+    echo "⚠️  Gateway API não respondeu. Verifique: journalctl -u openconnect-api -n 20"
 fi
 
-info "Iniciando supervisor..."
-systemctl start "${SERVICE_NAME}-supervisor"
-sleep 2
-
-if systemctl is-active --quiet "${SERVICE_NAME}-supervisor"; then
-    ok "Supervisor iniciado com sucesso!"
-else
-    warn "Supervisor não iniciou. Verifique: journalctl -u ${SERVICE_NAME}-supervisor -n 50"
-fi
-
-# ---- Resumo ----
+# [9] Cloudflared hint
+echo "[9/9] Lembrete de configuração..."
 echo ""
-color "32" "╔═══════════════════════════════════════════════════════╗"
-color "32" "║   OpenConnect Gateway v10.0.6 Instalado com Sucesso!    ║"
-color "32" "╚═══════════════════════════════════════════════════════╝"
+echo "========================================"
+echo "  INSTALAÇÃO CONCLUÍDA"
+echo "========================================"
 echo ""
-echo "  📁 Instalação:  $INSTALL_DIR"
-echo "  ⚙️  Config:      $CONFIG_DIR/config.yaml"
-echo "  📜 Logs:        $LOG_DIR/gateway.log"
-echo "  🔧 Serviço:     systemctl status $SERVICE_NAME"
+echo "Gateway ID:  ${GATEWAY_ID}"
+echo "Token:       ${CONFIG_TOKEN:0:8}... (em ${ENV_FILE})"
 echo ""
-echo "  Comandos úteis:"
-echo "    sudo systemctl status $SERVICE_NAME"
-echo "    sudo systemctl restart $SERVICE_NAME"
-echo "    sudo systemctl status ${SERVICE_NAME}-supervisor"
-echo "    sudo systemctl restart ${SERVICE_NAME}-supervisor"
-echo "    sudo journalctl -u $SERVICE_NAME -f"
-echo "    sudo journalctl -u ${SERVICE_NAME}-supervisor -f"
-echo "    sudo $INSTALL_DIR/scripts/health_check.sh"
+echo "Próximo passo:"
+echo "  Configure o Cloudflare Tunnel apontando para localhost:8082"
+echo "  (não para o go2rtc em 1984 — a API do gateway é na 8082)"
 echo ""
-echo "  Supervisor (auto-update):"
-echo "    Verifica Git a cada 5 minutos"
-echo "    Backup automático antes de updates"
+echo "Endpoints:"
+echo "  GET  /health        → Sem auth"
+echo "  GET  /cameras       → Bearer <token>"
+echo "  POST /config        → Bearer <token>"
+echo "  GET  /status        → Bearer <token>"
 echo ""
-echo "  Sincronização de config (cron):"
-echo "    sudo crontab -l | grep sync-config"
-echo "    sudo $INSTALL_DIR/sync-config.sh"
+echo "Heartbeat: RPC update_gateway_heartbeat a cada ${HEARTBEAT_INTERVAL}s"
 echo ""
-echo "  Para adicionar câmeras, edite:"
-echo "    sudo nano $CONFIG_DIR/config.yaml"
-echo "    sudo systemctl reload $SERVICE_NAME"
-echo ""
+echo "Comandos úteis:"
+echo "  systemctl status go2rtc openconnect-api"
+echo "  curl http://localhost:8082/health"
+echo "  tail -f /var/log/openconnect-gateway/*.log"
+echo "========================================"
